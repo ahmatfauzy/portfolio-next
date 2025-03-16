@@ -18,7 +18,7 @@ function page({ searchParams }: WorkPageProps) {
             Project I Created
           </h1>
           <p className="text-xl text-muted-foreground">
-            The project i created mostly created with javascript and typescript
+            where I bring ideas to life, one line of code at a time.
           </p>
         </div>
         <div className="grid grid-cols-1 py-12 md:grid-cols-2 md:gap-2">
