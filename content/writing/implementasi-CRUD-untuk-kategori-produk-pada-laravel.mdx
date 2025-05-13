@@ -1,0 +1,404 @@
+---
+title: Implementasi CRUD untuk Kategori Produk pada Laravel
+description: Panduan langkah demi langkah untuk mengimplementasikan operasi CRUD untuk kategori produk pada Laravel.
+date: 2025-05-11
+published: false
+---
+
+Melanjutkan dari artikel saya sebelumnya di [https://www.ahmatfauzi.my.id/writing/Membuat-Database-Migrations-pada-Laravel-untuk-Ecommerce](https://www.ahmatfauzi.my.id/writing/Membuat-Database-Migrations-pada-Laravel-untuk-Ecommerce), kali ini kita akan mengimplementasikan operasi CRUD (Create, Read, Update, Delete) untuk kategori produk pada Laravel.
+
+## Langkah 1: Membuat Model Product
+
+Buat model Product:
+
+```bash
+php artisan make:model Product --migration
+```
+
+Kemudian edit model Product:
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Product extends Model
+{
+    use HasFactory;
+
+
+    protected $table = 'product';
+    protected $fillable = [
+        'name',
+        'slug',
+        'description',
+        'price',
+        'stock',
+        'category_id',
+        'image',
+    ];
+
+    public function category()
+    {
+        return $this->belongsTo(Categories::class, 'category_id');
+    }
+}
+```
+
+## Langkah 2: Membuat Controller untuk Kategori Produk
+
+Buat controller untuk menangani operasi CRUD:
+
+```bash
+php artisan make:controller ProductController --resource
+```
+
+--resource disini agar kita langsung dibuatkan function untuk operasi CRUD
+
+Edit ProductController dengan kode berikut:
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use App\Models\Categories;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
+
+class ProductController extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     */
+    public function index()
+    {
+        $products = Product::with('category')->latest()->get();
+        return view('dashboard.products.index', compact('products'));
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     */
+    public function create()
+    {
+        $categories = Categories::all();
+        return view('dashboard.products.create', compact('categories'));
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(Request $request)
+{
+    // Validasi input
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'description' => 'nullable|string',
+        'price' => 'required|numeric|min:0',
+        'stock' => 'required|integer|min:0',
+        'category_id' => 'required|exists:product_categories,id',
+        'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+    ]);
+
+    // Generate slug dari nama
+    $validated['slug'] = Str::slug($validated['name']);
+
+    // Handle upload gambar jika ada
+    if ($request->hasFile('image')) {
+        $file = $request->file('image');
+        $fileName = time() . '_' . $file->getClientOriginalName();
+        $file->storeAs('public/products', $fileName);
+        $validated['image'] = 'products/' . $fileName;
+    }
+
+    // Simpan ke database
+    Product::create($validated);
+
+    return redirect()->route('products.index')
+        ->with('success', 'Product created successfully.');
+}
+
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(Product $product)
+    {
+        return view('dashboard.products.show', compact('product'));
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(Product $product)
+    {
+        $categories = Categories::all();
+        return view('dashboard.products.edit', compact('product', 'categories'));
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(Request $request, Product $product)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+            'category_id' => 'required|exists:product_categories,id',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+
+        $data = $request->all();
+        $data['slug'] = Str::slug($request->name);
+
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($product->image) {
+                Storage::delete('public/' . $product->image);
+            }
+            
+            $file = $request->file('image');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $file->storeAs('public/products', $fileName);
+            $data['image'] = 'products/' . $fileName;
+        }
+
+        $product->update($data);
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product updated successfully.');
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy(Product $product)
+    {
+        // Delete image if exists
+        if ($product->image) {
+            Storage::delete('public/' . $product->image);
+        }
+        
+        $product->delete();
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product deleted successfully.');
+    }
+}
+```
+
+## Langkah 4: Membuat Routes
+
+Tambahkan routes untuk produk di file `routes/web.php`:
+
+```php
+use App\Http\Controllers\ProductController;
+
+Route::resource('dashboard/products', ProductController::class);
+```
+Pastikan sudah mengimport path ke controller nya.
+
+
+## Langkah 5: Membuat Views dengan FluxUI
+
+### 1. Index View (Daftar Produk)
+
+Buat direktori dan file view:
+
+////////////////////////////////////////////////////////////////////////
+
+Buat file `resources/views/dashboard/product/index.blade.php`:
+
+```html
+<x-layouts.app>
+    <div class="mx-auto p-4">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-2xl font-semibold text-gray-200">Products</h1>
+            <a href="{{ route('products.create') }}" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Add New Product
+            </a>
+        </div>
+
+        @if(session('success'))
+            <div class="bg-green-500 text-white p-4 mb-4 rounded">
+                {{ session('success') }}
+            </div>
+        @endif
+
+        <div class="bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-700 table-auto text-gray-300">
+                <thead class="bg-gray-900">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">No.</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Image</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Price</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Stock</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Category</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-gray-800 divide-y divide-gray-700">
+                    @foreach ($products as $key => $product)
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">{{ $key + 1 }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
+                                @if($product->image)
+                                    <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" class="h-10 w-10 object-cover rounded">
+                                @else
+                                    <div class="h-10 w-10 bg-gray-700 rounded flex items-center justify-center">
+                                        <span class="text-xs text-gray-400">No Image</span>
+                                    </div>
+                                @endif
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">{{ $product->name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">{{ number_format($product->price, 2) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">{{ $product->stock }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">{{ $product->category->name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium flex space-x-2">
+                                <a href="{{ route('products.show', $product->id) }}" class="text-blue-500 hover:text-blue-400">
+                                    View
+                                </a>
+                                <a href="{{ route('products.edit', $product->id) }}" class="text-yellow-500 hover:text-yellow-400">
+                                    Edit
+                                </a>
+                                <form action="{{ route('products.destroy', $product->id) }}" method="POST" class="inline">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="text-red-500 hover:text-red-400" onclick="return confirm('Are you sure you want to delete this product?')">
+                                        Delete
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+</x-layouts.app>
+```
+view index ini untuk ui/antarmuka awal di dashboard pada menu Product.
+
+
+### 2. Create View (Form Pembuatan Produk)
+
+Buat file `resources/views/dashboard/products/create.blade.php`:
+
+```html
+<x-layouts.app>
+    <div class="mx-auto p-4">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-2xl font-semibold text-gray-200">Add New Product</h1>
+            <a href="{{ route('products.index') }}" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                Back to List
+            </a>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg shadow p-6">
+            <form action="{{ route('products.store') }}" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-400">Name</label>
+                        <input type="text" name="name" id="name" value="{{ old('name') }}" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('name')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label for="category_id" class="block text-sm font-medium text-gray-400">Category</label>
+                        <select name="category_id" id="category_id" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                            <option value="">Select Category</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>
+                                    {{ $category->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('category_id')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label for="price" class="block text-sm font-medium text-gray-400">Price</label>
+                        <input type="number" name="price" id="price" value="{{ old('price') }}" step="0.01" min="0" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('price')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label for="stock" class="block text-sm font-medium text-gray-400">Stock</label>
+                        <input type="number" name="stock" id="stock" value="{{ old('stock', 0) }}" min="0" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('stock')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div class="col-span-1 md:col-span-2">
+                        <label for="description" class="block text-sm font-medium text-gray-400">Description</label>
+                        <textarea name="description" id="description" rows="4" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">{{ old('description') }}</textarea>
+                        @error('description')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label for="image" class="block text-sm font-medium text-gray-400">Product Image</label>
+                        <input type="file" name="image" id="image" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('image')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Create Product
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</x-layouts.app>
+```
+Code ini diperuntukan untuk membuat form create new product.
+
+Selanjutnya kalian bisa buat juga untuk operasi lainnya (Update, Delete, Show) bisa dilihat di kode:
+https://github.com/ahmatfauzy/e-commerce/tree/main/resources/views/dashboard/products
+
+
+## Langkah 5: Uji Aplikasi
+
+Jalankan aplikasi Laravel:
+
+```bash
+php artisan serve
+```
+
+Akses halaman kategori produk di `http://127.0.0.1:8000/dashboard/product` untuk melihat dan mengelola kategori.
+
+## Kesimpulan
+
+Dalam tutorial ini, kita telah berhasil mengimplementasikan fitur CRUD untuk tabel products menggunakan Laravel dan FluxUI. Kita telah membuat:
+
+1. Model Categories untuk berinteraksi dengan database
+2. Controller (ProductCategoryController) dengan operasi CRUD
+3. Routes untuk mengarahkan permintaan ke controller yang sesuai
+4. Views untuk antarmuka pengguna kategori produk
+
+Dengan mengikuti langkah-langkah di atas, Anda dapat dengan mudah mengembangkan sistem manajemen kategori produk yang fungsional untuk aplikasi e-commerce Anda.
+
+Langkah selanjutnya, Anda dapat mengintegrasikan fitur ini dengan manajemen produk, menambahkan pencarian kategori, dan menghubungkannya dengan sistem order yang telah kita buat sebelumnya.

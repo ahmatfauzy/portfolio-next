@@ -1,0 +1,679 @@
+---
+title: Membangun Sistem E-commerce dengan Laravel, Database Migrations dan CRUD untuk Produk
+description: Panduan komprehensif untuk membuat migrasi database dan implementasi CRUD untuk sistem e-commerce menggunakan Laravel.
+date: 2025-05-12
+published: true
+---
+
+## Pendahuluan
+
+Dalam tutorial ini, kita akan membangun fondasi sistem e-commerce menggunakan Laravel, mencakup dua aspek kunci: Database Migrations dan implementasi CRUD (Create, Read, Update, Delete) untuk produk. Kita akan merancang struktur database yang kuat dan membuat antarmuka manajemen produk yang fungsional.
+
+## Apa itu Laravel Migrations?
+
+Laravel Migrations adalah fitur powerful yang memungkinkan kita mengelola struktur database dengan cara yang konsisten dan terstruktur. Keuntungan utamanya meliputi:
+
+- Membuat dan memodifikasi tabel database dengan mudah
+- Melacak perubahan struktur database dalam sistem kontrol versi
+- Menerapkan dan membatalkan perubahan database secara sederhana
+
+## Langkah 1: Membuat Database Migrations
+
+### Migrasi untuk Tabel Product Categories
+
+```bash
+php artisan make:migration create_product_categories_table
+```
+
+Isi file migrasi dengan kode berikut:
+
+```php
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('product_categories', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->string('image')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_categories');
+    }
+};
+```
+
+### Migrasi untuk Tabel Products
+
+```bash
+php artisan make:migration create_products_table
+```
+
+```php
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('products', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+            $table->decimal('price', 10, 2);
+            $table->integer('stock')->default(0);
+            $table->string('image')->nullable();
+            $table->foreignId('category_id')->constrained('product_categories')->onDelete('cascade');
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('products');
+    }
+};
+```
+
+### Migrasi untuk Tabel Customers
+
+```bash
+php artisan make:migration create_customers_table
+```
+
+```php
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('customers', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->text('address')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('customers');
+    }
+};
+```
+
+### Migrasi untuk Tabel Orders
+
+```bash
+php artisan make:migration create_orders_table
+```
+
+```php
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('customer_id');
+            $table->date('order_date');
+            $table->decimal('total_amount', 10, 2)->default(0.00);
+            $table->enum('status', ['pending', 'processing', 'completed', 'cancelled'])->default('pending');
+            $table->timestamps();
+            $table->foreign('customer_id')->references('id')->on('customers');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('orders');
+    }
+};
+```
+
+### Migrasi untuk Tabel Order Details
+
+```bash
+php artisan make:migration create_order_details_table
+```
+
+```php
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('order_details', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('order_id');
+            $table->unsignedBigInteger('product_id');
+            $table->unsignedInteger('quantity')->default(1);
+            $table->decimal('unit_price', 10, 2);
+            $table->decimal('subtotal', 10, 2);
+            $table->timestamps();
+            $table->foreign('order_id')->references('id')->on('orders');
+            $table->foreign('product_id')->references('id')->on('products');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('order_details');
+    }
+};
+```
+
+Jalankan migrasi untuk membuat struktur database:
+
+```bash
+php artisan migrate
+```
+
+## Langkah 2: Membuat Model Product
+
+```bash
+php artisan make:model Product
+```
+
+Edit model Product:
+
+```php
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Product extends Model
+{
+    use HasFactory;
+
+    protected $table = 'products';
+
+    protected $fillable = [
+        'name',
+        'slug',
+        'description',
+        'price',
+        'stock',
+        'category_id',
+        'image',
+    ];
+
+    public function category()
+    {
+        return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+}
+```
+
+FUnction dibagian paling bawah diperuntukan untuk mengatur relasi di tabel Products dengan tabel CAtegory
+
+
+## Langkah 3: Membuat ProductController
+
+```bash
+php artisan make:controller ProductController --resource
+```
+
+```php
+<?php
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use App\Models\ProductCategory;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
+
+class ProductController extends Controller
+{
+    public function index()
+    {
+        $products = Product::with('category')->latest()->get();
+        return view('dashboard.products.index', compact('products'));
+    }
+
+    public function create()
+    {
+        $categories = ProductCategory::all();
+        return view('dashboard.products.create', compact('categories'));
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+            'category_id' => 'required|exists:product_categories,id',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+
+        $validated['slug'] = Str::slug($validated['name']);
+
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $file->storeAs('public/products', $fileName);
+            $validated['image'] = 'products/' . $fileName;
+        }
+
+        Product::create($validated);
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product created successfully.');
+    }
+
+    public function show(Product $product)
+    {
+        return view('dashboard.products.show', compact('product'));
+    }
+
+    public function edit(Product $product)
+    {
+        $categories = ProductCategory::all();
+        return view('dashboard.products.edit', compact('product', 'categories'));
+    }
+
+    public function update(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+            'category_id' => 'required|exists:product_categories,id',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+
+        $validated['slug'] = Str::slug($request->name);
+
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($product->image) {
+                Storage::delete('public/' . $product->image);
+            }
+
+            $file = $request->file('image');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $file->storeAs('public/products', $fileName);
+            $validated['image'] = 'products/' . $fileName;
+        }
+
+        $product->update($validated);
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product updated successfully.');
+    }
+
+    public function destroy(Product $product)
+    {
+        // Delete image if exists
+        if ($product->image) {
+            Storage::delete('public/' . $product->image);
+        }
+
+        $product->delete();
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product deleted successfully.');
+    }
+}
+```
+
+## Langkah 4: Menambahkan Routes
+
+Di `routes/web.php`:
+
+```php
+use App\Http\Controllers\ProductController;
+
+Route::resource('dashboard/products', ProductController::class);
+```
+
+## Langkah 5: Membuat Views
+
+### Index View (Daftar Produk)
+
+`resources/views/dashboard/products/index.blade.php`:
+
+```html
+<x-layouts.app>
+  <div class="mx-auto p-4">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-2xl font-semibold text-gray-200">Products</h1>
+      <a
+        href="{{ route('products.create') }}"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+      >
+        Add New Product
+      </a>
+    </div>
+
+    @if(session('success'))
+    <div class="bg-green-500 text-white p-4 mb-4 rounded">
+      {{ session('success') }}
+    </div>
+    @endif
+
+    <div class="bg-gray-800 rounded-lg shadow overflow-x-auto">
+      <table
+        class="min-w-full divide-y divide-gray-700 table-auto text-gray-300"
+      >
+        <thead class="bg-gray-900">
+          <tr>
+            <th
+              scope="col"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+            >
+              No.
+            </th>
+            <th
+              scope="col"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+            >
+              Image
+            </th>
+            <th
+              scope="col"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+            >
+              Name
+            </th>
+            <th
+              scope="col"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+            >
+              Price
+            </th>
+            <th
+              scope="col"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+            >
+              Stock
+            </th>
+            <th
+              scope="col"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+            >
+              Category
+            </th>
+            <th
+              scope="col"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+            >
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody class="bg-gray-800 divide-y divide-gray-700">
+          @foreach ($products as $key => $product)
+          <tr>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+              {{ $key + 1 }}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
+              @if($product->image)
+              <img
+                src="{{ asset('storage/' . $product->image) }}"
+                alt="{{ $product->name }}"
+                class="h-10 w-10 object-cover rounded"
+              />
+              @else
+              <div
+                class="h-10 w-10 bg-gray-700 rounded flex items-center justify-center"
+              >
+                <span class="text-xs text-gray-400">No Image</span>
+              </div>
+              @endif
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
+              {{ $product->name }}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
+              {{ number_format($product->price, 2) }}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
+              {{ $product->stock }}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
+              {{ $product->category->name }}
+            </td>
+            <td
+              class="px-6 py-4 whitespace-nowrap text-sm font-medium flex space-x-2"
+            >
+              <a
+                href="{{ route('products.show', $product->id) }}"
+                class="text-blue-500 hover:text-blue-400"
+              >
+                View
+              </a>
+              <a
+                href="{{ route('products.edit', $product->id) }}"
+                class="text-yellow-500 hover:text-yellow-400"
+              >
+                Edit
+              </a>
+              <form
+                action="{{ route('products.destroy', $product->id) }}"
+                method="POST"
+                class="inline"
+              >
+                @csrf @method('DELETE')
+                <button
+                  type="submit"
+                  class="text-red-500 hover:text-red-400"
+                  onclick="return confirm('Are you sure you want to delete this product?')"
+                >
+                  Delete
+                </button>
+              </form>
+            </td>
+          </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  </div>
+</x-layouts.app>
+```
+
+Pastikan sudah punya template layout sebelumnya.
+
+
+
+### Create View (Form Pembuatan Produk)
+
+`resources/views/dashboard/products/create.blade.php`:
+
+```html
+<x-layouts.app>
+    <div class="mx-auto p-4">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-2xl font-semibold text-gray-200">Add New Product</h1>
+            <a href="{{ route('products.index') }}" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                Back to List
+            </a>
+        </div>
+        <div class="bg-gray-800 rounded-lg shadow p-6">
+            <form action="{{ route('products.store') }}" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-400">Name</label>
+                        <input type="text" name="name" id="name" value="{{ old('name') }}" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('name')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <div>
+                        <label for="category_id" class="block text-sm font-medium text-gray-400">Category</label>
+                        <select name="category_id" id="category_id" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                            <option value="">Select Category</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>
+                                    {{ $category->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('category_id')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <div>
+                        <label for="price" class="block text-sm font-medium text-gray-400">Price</label>
+                        <input type="number" name="price" id="price" value="{{ old('price') }}" step="0.01" min="0" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('price')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <div>
+                        <label for="stock" class="block text-sm font-medium text-gray-400">Stock</label>
+                        <input type="number" name="stock" id="stock" value="{{ old('stock', 0) }}" min="0" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('stock')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <div class="col-span-1 md:col-span-2">
+                        <label for="description" class="block text-sm font-medium text-gray-400">Description</label>
+                        <textarea name="description" id="description" rows="4" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">{{ old('description') }}</textarea>
+                        @error('description')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <div>
+                        <label for="image" class="block text-sm font-medium text-gray-400">Product Image</label>
+                        <input type="file" name="image" id="image" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-600 bg-gray-700 text-white rounded-md">
+                        @error('image')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Create Product
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</x-layouts.app>
+```
+
+Selanjutnya bisa untuk membuat tampilan ui / view untuk operasi lainnya (Update, Delete, SHow), anda bisa melihat referensinya di: https://github.com/ahmatfauzy/e-commerce/tree/main/resources/views/dashboard/products
+
+## Langkah 6: Struktur Direktori
+
+Pastikan struktur direktori proyek Anda mirip dengan berikut:
+
+```
+laravel-project/
+│
+├── app/
+│   ├── Http/
+│   │   └── Controllers/
+│   │       └── ProductController.php
+│   └── Models/
+│       └── Product.php
+│
+├── database/
+│   └── migrations/
+│       ├── YYYY_MM_DD_create_product_categories_table.php
+│       ├── YYYY_MM_DD_create_products_table.php
+│       ├── YYYY_MM_DD_create_customers_table.php
+│       ├── YYYY_MM_DD_create_orders_table.php
+│       └── YYYY_MM_DD_create_order_details_table.php
+│
+├── resources/
+│   └── views/
+│       └── dashboard/
+│           └── products/
+│               ├── index.blade.php
+│               ├── create.blade.php
+│               ├── edit.blade.php
+│               └── show.blade.php
+│
+└── routes/
+    └── web.php
+```
+
+## Langkah 7: Menjalankan Aplikasi
+
+Untuk menjalankan aplikasi, ikuti langkah-langkah berikut:
+
+1. Siapkan database Anda di file `.env`
+2. Jalankan migrasi:
+
+```bash
+php artisan migrate
+```
+
+3. Jalankan server pengembangan:
+
+```bash
+php artisan serve
+```
+
+Akses aplikasi di `http://localhost:8000/dashboard/products`
+
+## Kesimpulan
+
+Dalam tutorial komprehensif ini, kita telah berhasil:
+
+1. Merancang struktur database yang kuat menggunakan Laravel Migrations
+2. Membuat model Eloquent untuk berinteraksi dengan database
+3. Mengimplementasikan kontroler dengan operasi CRUD lengkap
+4. Merancang antarmuka pengguna yang responsif menggunakan Tailwind CSS
+5. Menangani upload dan manajemen gambar produk
+
+### Fitur Utama yang Telah Diimplementasikan:
+
+- Manajemen kategori produk
+- Pembuatan, edit, dan hapus produk
+- Validasi input
+- Penanganan upload gambar
+- Tampilan daftar produk dengan informasi lengkap
+
+
+## Penutup
+
+Tutorial ini memberikan fondasi solid untuk membangun sistem e-commerce menggunakan Laravel. Dengan mengikuti praktik-praktik terbaik dalam pengembangan web, Anda dapat dengan cepat memperluas dan menyesuaikan sistem sesuai kebutuhan bisnis Anda.
+
+Jangan ragu untuk melakukan eksperimen, menambahkan fitur baru, dan terus mengembangkan kemampuan Anda dalam merancang aplikasi web yang kuat dan skalabel.
+
+## Referensi Tambahan
+
+- [Dokumentasi Resmi Laravel](https://laravel.com/docs)
+- [Laravel Migrations](https://laravel.com/docs/migrations)
+- [Dokumentasi FluxUI](https://fluxui.dev)
+- [Tailwind CSS](https://tailwindcss.com/)

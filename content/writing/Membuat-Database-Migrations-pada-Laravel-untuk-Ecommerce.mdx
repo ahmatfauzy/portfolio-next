@@ -2,7 +2,7 @@
 title: Membuat Database Migrations pada Laravel untuk E-commerce
 description: Panduan langkah demi langkah pembuatan migrasi database untuk sistem e-commerce dengan Laravel.
 date: 2025-05-10
-published: true
+published: false
 ---
 
 Pada artikel sebelumnya di [https://www.ahmatfauzi.my.id/writing/install-laravel-with-composer](https://www.ahmatfauzi.my.id/writing/install-laravel-with-composer), kita telah membahas cara menginstal Laravel dengan Composer. Kali ini, kita akan melanjutkan dengan membuat migrasi database untuk sistem e-commerce sederhana menggunakan Laravel Migrations.
@@ -10,10 +10,10 @@ Pada artikel sebelumnya di [https://www.ahmatfauzi.my.id/writing/install-laravel
 ## Apa itu Laravel Migrations?
 
 Laravel Migrations adalah fitur yang memungkinkan kita untuk mengelola struktur database dengan mudah dan konsisten. Dengan menggunakan migrations, kita dapat:
+
 - Membuat dan memodifikasi tabel database
 - Melacak perubahan struktur database dalam sistem kontrol versi
 - Menerapkan dan membatalkan perubahan database dengan mudah
-
 
 ## Langkah 1: Membuat Migrasi untuk Tabel ProductsCategory
 
@@ -58,8 +58,54 @@ return new class extends Migration
 };
 ```
 
-
 ## Langkah 2: Membuat Migrasi untuk Tabel Customers
+
+Mari kita mulai dengan membuat migrasi untuk tabel customers:
+
+```bash
+php artisan make:migration create_product_table
+```
+
+Perintah ini akan membuat file migrasi baru di direktori `database/migrations`. Buka file tersebut dan isi dengan kode berikut:
+
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('product', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+            $table->decimal('price', 10, 2);
+            $table->integer('stock')->default(0);
+            $table->string('image')->nullable();
+            $table->foreignId('category_id')->constrained('product_categories')->onDelete('cascade');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('products');
+    }
+};
+```
+
+## Langkah 3: Membuat Migrasi untuk Tabel Customers
 
 Mari kita mulai dengan membuat migrasi untuk tabel customers:
 
@@ -102,7 +148,7 @@ return new class extends Migration
 };
 ```
 
-## Langkah 3: Membuat Migrasi untuk Tabel Orders
+## Langkah 4: Membuat Migrasi untuk Tabel Orders
 
 Selanjutnya, buat migrasi untuk tabel orders:
 
@@ -133,7 +179,7 @@ return new class extends Migration
             $table->decimal('total_amount', 10, 2)->default(0.00);
             $table->enum('status', ['pending', 'processing', 'completed', 'cancelled'])->default('pending');
             $table->timestamps();
-            
+
             $table->foreign('customer_id')->references('id')->on('customers');
         });
     }
@@ -148,7 +194,7 @@ return new class extends Migration
 };
 ```
 
-## Langkah 4: Membuat Migrasi untuk Tabel Order Details
+## Langkah 5: Membuat Migrasi untuk Tabel Order Details
 
 Terakhir, buat migrasi untuk tabel order_details:
 
@@ -180,7 +226,7 @@ return new class extends Migration
             $table->decimal('unit_price', 10, 2);
             $table->decimal('subtotal', 10, 2);
             $table->timestamps();
-            
+
             $table->foreign('order_id')->references('id')->on('orders');
             $table->foreign('product_id')->references('id')->on('product_category');
         });
@@ -196,15 +242,13 @@ return new class extends Migration
 };
 ```
 
-
-## Langkah 5: Menjalankan Migrasi
+## Langkah 6: Menjalankan Migrasi
 
 Setelah membuat semua file migrasi, kita perlu menjalankannya untuk membuat tabel-tabel di database:
 
 ```bash
 php artisan migrate
 ```
-
 
 ## Kesimpulan
 
